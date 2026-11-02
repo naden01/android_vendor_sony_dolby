@@ -23,6 +23,11 @@ import kotlin.math.exp
 import kotlin.math.pow
 import kotlin.math.sin
 
+// Visualizer bar spring: high stiffness + moderate damping gives a bouncy,
+// slightly overshooting motion that settles quickly.
+private const val BAR_STIFFNESS = 0.55f
+private const val BAR_DAMPING = 0.60f
+
 @Composable
 fun AnimatedEqualizerIconDynamic(
     modifier: Modifier = Modifier,
@@ -128,6 +133,7 @@ fun AnimatedWaveformBanner(
     // crossfade between live levels and the idle animation.
     val targets = remember(barCount) { FloatArray(barCount) }
     val display = remember(barCount) { FloatArray(barCount) }
+    val velocity = remember(barCount) { FloatArray(barCount) }
     var audioActive by remember { mutableStateOf(false) }
     var liveMix by remember { mutableFloatStateOf(0f) }
     var frameTick by remember { mutableIntStateOf(0) }
@@ -141,11 +147,13 @@ fun AnimatedWaveformBanner(
     LaunchedEffect(Unit) {
         while (true) {
             withFrameNanos { }
-            liveMix += ((if (audioActive) 1f else 0f) - liveMix) * 0.10f
+            liveMix += ((if (audioActive) 1f else 0f) - liveMix) * 0.15f
             for (i in display.indices) {
                 val target = if (audioActive) targets[i] else 0f
-                val rate = if (target > display[i]) 0.5f else 0.2f
-                display[i] += (target - display[i]) * rate
+                // Underdamped spring: snaps up, overshoots a touch, falls fast.
+                val force = (target - display[i]) * BAR_STIFFNESS
+                velocity[i] = (velocity[i] + force) * BAR_DAMPING
+                display[i] = (display[i] + velocity[i]).coerceIn(0f, 1.08f)
             }
             frameTick++
         }
@@ -184,7 +192,7 @@ fun AnimatedWaveformBanner(
 
             // Live spectrum: bars follow the captured audio, blended with the
             // idle envelope during the crossfade so the silhouette stays.
-            val liveLevel = display.getOrElse(index) { 0f }
+            val liveLevel = display.getOrElse(index) { 0f }.coerceIn(0f, 1f)
             val level = (liveLevel * mix + idleLevel * (1f - mix)).coerceIn(0f, 1f)
 
             val halfHeight = maxHalfHeight * level

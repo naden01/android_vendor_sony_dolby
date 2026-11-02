@@ -128,8 +128,8 @@ class AudioVisualizer(
                 sum += sqrt(re * re + im * im)
             }
             val avg = sum / (endBin - startBin)
-            val level = (avg / 64f).coerceIn(0f, 1f)
-            smoothed[band] = if (level > smoothed[band]) level else smoothed[band] * 0.80f
+            val level = (avg / 56f).coerceIn(0f, 1f)
+            smoothed[band] = if (level > smoothed[band]) level else smoothed[band] * 0.84f
             if (smoothed[band] > peak) peak = smoothed[band]
         }
 
