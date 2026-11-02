@@ -23,11 +23,14 @@ object DolbyConstants {
     const val PREF_BASS = "dolby_bass"
     const val PREF_BASS_LEVEL = "dolby_bass_level"
     const val PREF_BASS_CURVE = "dolby_bass_curve"
+    const val PREF_MID = "dolby_mid"
+    const val PREF_MID_LEVEL = "dolby_mid_level"
     const val PREF_TREBLE = "dolby_treble"
     const val PREF_TREBLE_LEVEL = "dolby_treble_level"
     const val PREF_VOLUME = "dolby_volume"
     const val PREF_PRESETS_MIGRATED = "presets_migrated"
     const val PREF_BAND_MODE = "dolby_band_mode"
+    const val PREF_DEVICE_STATE_MEMORY = "device_state_memory_enabled"
     
     const val PREF_FILE_PRESETS = "presets"
 

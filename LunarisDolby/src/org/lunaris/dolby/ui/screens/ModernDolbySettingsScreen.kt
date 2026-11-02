@@ -3,87 +3,70 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+
 package org.lunaris.dolby.ui.screens
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import org.lunaris.dolby.R
 import org.lunaris.dolby.domain.models.DolbyUiState
 import org.lunaris.dolby.ui.components.*
+import org.lunaris.dolby.ui.viewmodel.DolbyViewModel
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ModernDolbySettingsScreen(
-    viewModel: org.lunaris.dolby.ui.viewmodel.DolbyViewModel,
-    navController: NavController
+    viewModel: DolbyViewModel,
+    navController: NavController,
+    bottomPadding: Dp = 0.dp,
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val listState = rememberLazyListState()
+    val showTitle by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 } }
     var showResetDialog by remember { mutableStateOf(false) }
     var showCreditsDialog by remember { mutableStateOf(false) }
-    val currentRoute by navController.currentBackStackEntryFlow.collectAsState(null)
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { 
-                    Text(
-                        stringResource(R.string.dolby_title),
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    ) 
-                },
+            DolbyTopAppBar(
+                title = stringResource(R.string.dolby_title),
+                showTitle = showTitle || uiState !is DolbyUiState.Success,
                 actions = {
                     IconButton(onClick = { showCreditsDialog = true }) {
                         Icon(
-                            Icons.Default.Info, 
-                            contentDescription = "Credits",
+                            Icons.Default.Info,
+                            contentDescription = stringResource(R.string.dolby_credits),
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                     IconButton(onClick = { showResetDialog = true }) {
                         Icon(
-                            Icons.Default.RestartAlt, 
-                            contentDescription = "Reset",
+                            Icons.Default.RestartAlt,
+                            contentDescription = stringResource(R.string.dolby_reset_all),
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent
-                )
+                }
             )
         },
-        bottomBar = {
-            if (uiState is DolbyUiState.Success) {
-                BottomNavigationBar(
-                    currentRoute = currentRoute?.destination?.route ?: Screen.Settings.route,
-                    onNavigate = { route ->
-                        if (currentRoute?.destination?.route != route) {
-                            navController.navigate(route) {
-                                popUpTo(Screen.Settings.route) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        }
-                    }
-                )
-            }
-        },
-        containerColor = MaterialTheme.colorScheme.surfaceContainer
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface
     ) { paddingValues ->
+        Box(modifier = Modifier.fillMaxSize()) {
         when (val state = uiState) {
             is DolbyUiState.Loading -> {
                 Box(
@@ -108,7 +91,10 @@ fun ModernDolbySettingsScreen(
             is DolbyUiState.Success -> {
                 ModernDolbySettingsContent(
                     state = state,
+                    listState = listState,
                     viewModel = viewModel,
+                    navController = navController,
+                    bottomPadding = bottomPadding,
                     modifier = Modifier.padding(paddingValues)
                 )
             }
@@ -138,8 +124,9 @@ fun ModernDolbySettingsScreen(
                 }
             }
         }
-    }
+        }
 
+    }
     if (showResetDialog) {
         ModernConfirmDialog(
             title = stringResource(R.string.dolby_reset_all),
@@ -152,7 +139,7 @@ fun ModernDolbySettingsScreen(
             onDismiss = { showResetDialog = false }
         )
     }
-    
+
     if (showCreditsDialog) {
         CreditsDialog(
             onDismiss = { showCreditsDialog = false }
@@ -163,14 +150,26 @@ fun ModernDolbySettingsScreen(
 @Composable
 private fun ModernDolbySettingsContent(
     state: DolbyUiState.Success,
-    viewModel: org.lunaris.dolby.ui.viewmodel.DolbyViewModel,
+    listState: LazyListState,
+    viewModel: DolbyViewModel,
+    navController: NavController,
+    bottomPadding: Dp,
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        state = listState,
+        contentPadding = PaddingValues(
+            start = 20.dp, top = 12.dp, end = 20.dp, bottom = 12.dp + bottomPadding,
+        ),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
+        item {
+            DolbyPageHeading(
+                title = stringResource(R.string.dolby_title),
+                subtitle = stringResource(R.string.dolby_summary),
+            )
+        }
         item {
             DolbyMainCard(
                 enabled = state.settings.enabled,
@@ -201,31 +200,24 @@ private fun ModernDolbySettingsContent(
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
             ) {
-                ModernSettingsCard(
-                    title = "Intelligent Equalizer",
-                    icon = Icons.Default.GraphicEq
-                ) {
-                    ModernIeqSelector(
-                        currentPreset = state.profileSettings.ieqPreset,
-                        onPresetChange = { viewModel.setIeqPreset(it) }
-                    )
-                }
+                ModernIeqSelector(
+                    currentPreset = state.profileSettings.ieqPreset,
+                    onPresetChange = { viewModel.setIeqPreset(it) }
+                )
             }
         }
-        
-        item {
-            Spacer(modifier = Modifier.height(80.dp))
-        }
-    }
-}
 
-@Composable
-private fun BottomNavigationBar(
-    currentRoute: String,
-    onNavigate: (String) -> Unit
-) {
-    EnhancedBottomNavigationBar(
-        currentRoute = currentRoute,
-        onNavigate = onNavigate
-    )
+        item {
+            AnimatedVisibility(
+                visible = state.settings.enabled,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                AppProfileSettingsCard(
+                    onManageClick = { navController.navigate("app_profiles") }
+                )
+            }
+        }
+
+    }
 }

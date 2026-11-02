@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+
 package org.lunaris.dolby.ui.components
 
 import android.content.Context
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.lunaris.dolby.R
 import org.lunaris.dolby.service.AppProfileMonitorService
+import org.lunaris.dolby.DolbyConstants
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -35,6 +39,9 @@ fun AppProfileSettingsCard(
     val prefs = context.getSharedPreferences("dolby_prefs", Context.MODE_PRIVATE)
     var isEnabled by remember { 
         mutableStateOf(prefs.getBoolean("app_profile_monitoring_enabled", false)) 
+    }
+    var isDeviceStateMemoryEnabled by remember {
+        mutableStateOf(prefs.getBoolean(DolbyConstants.PREF_DEVICE_STATE_MEMORY, false))
     }
     var showToasts by remember {
         mutableStateOf(prefs.getBoolean("app_profile_show_toasts", true))
@@ -48,7 +55,7 @@ fun AppProfileSettingsCard(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.extraLarge,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceBright
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         )
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
@@ -59,7 +66,7 @@ fun AppProfileSettingsCard(
                 Surface(
                     modifier = Modifier.size(40.dp),
                     shape = MaterialTheme.shapes.medium,
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                    color = MaterialTheme.colorScheme.primaryContainer
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
@@ -75,8 +82,7 @@ fun AppProfileSettingsCard(
                 
                 Text(
                     text = stringResource(R.string.app_profiles_title),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleLargeEmphasized,
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }
@@ -102,10 +108,14 @@ fun AppProfileSettingsCard(
                 
                 Switch(
                     checked = isEnabled,
+                    enabled = !isDeviceStateMemoryEnabled,
                     onCheckedChange = { enabled ->
                         if (enabled && !hasUsageStatsPermission(context)) {
                             showPermissionDialog = true
                         } else {
+                            if (enabled && isDeviceStateMemoryEnabled) {
+                                return@Switch
+                            }
                             isEnabled = enabled
                             prefs.edit().putBoolean("app_profile_monitoring_enabled", enabled).apply()
                             
@@ -138,6 +148,24 @@ fun AppProfileSettingsCard(
                         }
                     }
                 )
+            }
+
+            AnimatedVisibility(visible = isDeviceStateMemoryEnabled) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp),
+                    shape = MaterialTheme.shapes.large,
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                ) {
+                    Text(
+                        text = stringResource(R.string.device_state_memory_conflict_summary),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
             }
             
             AnimatedVisibility(visible = isEnabled) {
@@ -243,11 +271,93 @@ fun AppProfileSettingsCard(
             }
             
             Spacer(modifier = Modifier.height(12.dp))
+
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 4.dp),
+                color = MaterialTheme.colorScheme.outlineVariant
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.device_state_memory_title),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = if (isEnabled)
+                            stringResource(R.string.app_profile_conflict_summary)
+                        else
+                            stringResource(R.string.device_state_memory_summary),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (isEnabled)
+                            MaterialTheme.colorScheme.error
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Switch(
+                    checked = isDeviceStateMemoryEnabled,
+                    enabled = !isEnabled,
+                    onCheckedChange = { enabled ->
+                        if (enabled && isEnabled) {
+                            isEnabled = false
+                            prefs.edit()
+                                .putBoolean("app_profile_monitoring_enabled", false)
+                                .apply()
+                            AppProfileMonitorService.stopMonitoring(context)
+                            android.widget.Toast.makeText(
+                                context,
+                                context.getString(R.string.app_profile_conflict_toast),
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        isDeviceStateMemoryEnabled = enabled
+                        prefs.edit()
+                            .putBoolean(DolbyConstants.PREF_DEVICE_STATE_MEMORY, enabled)
+                            .apply()
+                    },
+                    thumbContent = {
+                        Crossfade(
+                            targetState = isDeviceStateMemoryEnabled,
+                            animationSpec = MaterialTheme.motionScheme.slowEffectsSpec(),
+                            label = "device_memory_switch_icon"
+                        ) { isChecked ->
+                            if (isChecked) {
+                                Icon(
+                                    imageVector = Icons.Filled.Check,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
             
             Button(
                 onClick = onManageClick,
                 modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.medium,
+                shape = MaterialTheme.shapes.large,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary
@@ -268,18 +378,25 @@ fun AppProfileSettingsCard(
         AlertDialog(
             onDismissRequest = { showPermissionDialog = false },
             icon = {
-                Icon(
-                    Icons.Default.Security,
-                    contentDescription = null,
-                    modifier = Modifier.size(32.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
+                Surface(
+                    modifier = Modifier.size(56.dp),
+                    shape = MaterialTheme.shapes.large,
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.Security,
+                            contentDescription = null,
+                            modifier = Modifier.size(28.dp),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
             },
-            title = { 
+            title = {
                 Text(
                     stringResource(R.string.app_profiles_permission_required),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleLargeEmphasized,
                     color = MaterialTheme.colorScheme.onSurface
                 ) 
             },
@@ -297,7 +414,11 @@ fun AppProfileSettingsCard(
                         context.startActivity(intent)
                         showPermissionDialog = false
                     },
-                    shape = MaterialTheme.shapes.medium
+                    shape = MaterialTheme.shapes.large,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    )
                 ) {
                     Text(stringResource(R.string.app_profiles_grant_permission))
                 }
@@ -305,12 +426,19 @@ fun AppProfileSettingsCard(
             dismissButton = {
                 TextButton(
                     onClick = { showPermissionDialog = false },
-                    shape = MaterialTheme.shapes.medium
+                    shape = MaterialTheme.shapes.large,
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 ) {
                     Text(stringResource(R.string.cancel))
                 }
             },
-            shape = MaterialTheme.shapes.extraLarge
+            shape = MaterialTheme.shapes.extraLarge,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            iconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            titleContentColor = MaterialTheme.colorScheme.onSurface,
+            textContentColor = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
