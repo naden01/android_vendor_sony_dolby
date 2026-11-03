@@ -167,6 +167,7 @@ class DolbyEffectService : Service() {
         audioManager.unregisterAudioDeviceCallback(audioDeviceCallback)
         audioManager.unregisterAudioPlaybackCallback(playbackCallback)
         handler.removeCallbacksAndMessages(null)
+        repository.close()
         Log.d(TAG, "Dolby effect service destroyed")
     }
 

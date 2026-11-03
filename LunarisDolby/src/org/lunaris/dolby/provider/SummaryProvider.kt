@@ -57,21 +57,24 @@ class SummaryProvider : ContentProvider() {
     private fun getDolbySummary(): String {
         val context = context ?: return ""
         val repository = DolbyRepository(context)
-        
-        if (!repository.getDolbyEnabled()) {
-            return context.getString(R.string.dolby_off)
-        }
-        
-        val profile = repository.getCurrentProfile()
-        val profiles = context.resources.getStringArray(R.array.dolby_profile_entries)
-        val profileValues = context.resources.getStringArray(R.array.dolby_profile_values)
-        
         return try {
-            val index = profileValues.indexOf(profile.toString())
-            val profileName = if (index != -1) profiles[index] else context.getString(R.string.dolby_unknown)
-            context.getString(R.string.dolby_on_with_profile, profileName)
+            if (!repository.getDolbyEnabled()) {
+                context.getString(R.string.dolby_off)
+            } else {
+                val profile = repository.getCurrentProfile()
+                val profiles = context.resources.getStringArray(R.array.dolby_profile_entries)
+                val profileValues = context.resources.getStringArray(R.array.dolby_profile_values)
+                val index = profileValues.indexOf(profile.toString())
+                val profileName =
+                    if (index != -1) profiles[index] else context.getString(R.string.dolby_unknown)
+                context.getString(R.string.dolby_on_with_profile, profileName)
+            }
         } catch (e: Exception) {
             context.getString(R.string.dolby_on)
+        } finally {
+            // Summary is queried on every Settings render; always release the
+            // native audio effect it creates.
+            repository.close()
         }
     }
 }
