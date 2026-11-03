@@ -36,6 +36,7 @@ class AppProfileMonitorService : Service() {
     private var pendingSwitchRunnable: Runnable? = null
     private var hasOriginalProfile = false
     private var lastProfileChangeTime: Long = 0
+    private var lastQueryTime: Long = 0L
 
     private val checkForegroundAppRunnable = object : Runnable {
         override fun run() {
@@ -92,6 +93,10 @@ class AppProfileMonitorService : Service() {
     private fun startMonitoring() {
         if (!isMonitoring) {
             isMonitoring = true
+            // Fresh start: forget the previous query cursor/app so the current
+            // foreground app is picked up immediately.
+            lastQueryTime = 0L
+            lastPackageName.set(null)
             DolbyConstants.dlog(TAG, "Started monitoring foreground app (original profile: $originalProfile)")
             handler.post(checkForegroundAppRunnable)
         }
@@ -226,22 +231,40 @@ class AppProfileMonitorService : Service() {
     }
 
     private fun getForegroundPackage(): String? {
-        val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val currentTime = System.currentTimeMillis()
-        
-        val usageEvents = usageStatsManager.queryEvents(currentTime - 1000, currentTime)
-        val event = UsageEvents.Event()
-        
-        var lastPackage: String? = null
-        
-        while (usageEvents.hasNextEvent()) {
-            usageEvents.getNextEvent(event)
-            if (event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) {
-                lastPackage = event.packageName
+        return try {
+            val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+            val now = System.currentTimeMillis()
+
+            // Rolling window: query everything since the previous poll so no
+            // resume event can fall between polls (the old 1s window polled
+            // every 2s silently dropped half of them).
+            if (lastQueryTime == 0L) {
+                lastQueryTime = now - CHECK_INTERVAL
             }
+            if (now <= lastQueryTime) {
+                return null
+            }
+
+            val usageEvents = usageStatsManager.queryEvents(lastQueryTime, now)
+            lastQueryTime = now
+
+            val event = UsageEvents.Event()
+            var lastPackage: String? = null
+
+            while (usageEvents.hasNextEvent()) {
+                usageEvents.getNextEvent(event)
+                if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED ||
+                    event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND
+                ) {
+                    lastPackage = event.packageName
+                }
+            }
+
+            lastPackage
+        } catch (e: Exception) {
+            Log.e(TAG, "Error querying foreground app", e)
+            null
         }
-        
-        return lastPackage
     }
     
     private fun getProfileName(profile: Int): String {
